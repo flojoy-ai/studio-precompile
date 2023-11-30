@@ -84,3 +84,10 @@ ___________________
 Used for storing the firmware path for microcontrollers
 """
 RP2_FIRMWARE_PATH = "precompilation/ressources/rp2-firmware/firmware.uf2"
+
+"""
+PATH TO TEMPLATES 
+___________________
+Used for storing the path to the templates directory
+"""
+PATH_TO_CLEAR_MC_ROOT = 'precompilation/templates/functions/clear_mc_root.py'

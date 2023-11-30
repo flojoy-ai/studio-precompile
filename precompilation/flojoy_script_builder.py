@@ -21,6 +21,7 @@ from precompilation.config import (
     FILTERS_FOR_FILES,
     GC_THRESHOLD,
     HEADER,
+    PATH_TO_CLEAR_MC_ROOT,
 )
 from precompilation.exceptions.exceptions import FunctionOrClassAlreadyExists
 from precompilation.precompilation_utils import extract_pip_packages
@@ -448,15 +449,15 @@ class FlojoyScriptBuilder:
     #     for file in to_remove:
     #         os.remove(file)
 
-    # TODO clean this up
-    def run_script(self, tempdir: TemporaryDirectory[str], port: str, manager: Manager):
-        asyncio.run(
-            self.signaler.signal_script_running_microcontroller(self.jobset_id)
-        )
-        logger.debug(f"Temp dir {tempdir.name} contents: " + str(os.listdir(tempdir.name)))
-        cmd = f"mpremote connect {port} + mount {tempdir.name} run {tempdir.name}/main.py"
+
+    def run_mpr_cmd(self, port, cmd, manager):
+        """
+        This function will run the specified command for the microcontroller.
+        Intended to work with mpremote.
+        """
+        logger.debug(f"running mpr cmd: {cmd}")
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        manager.set_mc(p, port, play=True)
+        manager.set_mc(p, port, play=True) # allows to cancel the process
         logger.debug("set the mc_proc")
         ec = p.wait()
         stderr = p.stderr.read().decode() if p.stderr else ""
@@ -469,13 +470,32 @@ class FlojoyScriptBuilder:
             asyncio.run(
                 self.signaler.signal_prejob_output(self.jobset_id, stderr)
             )
-            return
+            raise Exception("Error: ", stderr, stdout)
+        manager.set_mc(None, port, play=False)
+        logger.debug("done running mpr cmd")
+        return stderr, stdout
+
+    def run_script(self, tempdir: TemporaryDirectory[str], port: str, manager: Manager):
+        """
+        This function uses mpremote to run the script on the microcontroller.
+        What does is mount a filesystem on the microcontroller 
+        that will map to the tempdir, and thenrun the script.
+        """
+        asyncio.run(
+            self.signaler.signal_script_running_microcontroller(self.jobset_id)
+        )
+
+        # run mpremote command to mount tempdir and run script
+        logger.debug(f"Temp dir {tempdir.name} contents: " + str(os.listdir(tempdir.name)))
+        cmd = f"mpremote connect {port} + mount {tempdir.name} run {tempdir.name}/main.py"
+        self.run_mpr_cmd(port, cmd, manager)
+
         # close tempdir
-        tempdir.cleanup()
         logger.debug("done running MC")
+
         asyncio.run(self.signaler.signal_standby(self.jobset_id))
 
-    # TODO clean this up
+
     def output(self, tempdir: TemporaryDirectory[str], port: str, path_to_output: str | None, manager: Manager):
         """
         Copy paste the temp dir into the output dir if specified
@@ -497,67 +517,21 @@ class FlojoyScriptBuilder:
             try:
                 # first, delete all other files on microcontroller
                 logger.debug("clearing mc root...")
-                proc = subprocess.Popen(
-                    f"mpremote connect {port} + run precompilation/templates/functions/clear_mc_root.py",
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    shell=True
-                )
-                logger.debug("waiting for clear_mc_root.py to finish...")
-                ec = proc.wait()
-                stderr = proc.stderr.read().decode()
-                stdout = proc.stdout.read().decode()
-                if proc.stderr: proc.stderr.close()
-                if proc.stdout: proc.stdout.close()
-                logger.debug(f"finished clearing mc root with exit code: {ec}")
-                if ec != 0:
-                    logger.debug(f"Got error from MC: {stderr}")
-                    logger.debug(f"stdout: {stdout}")
-                    raise Exception("Error: ", stderr)
+                cmd = f"mpremote connect {port} + run {PATH_TO_CLEAR_MC_ROOT}",
+                self.run_mpr_cmd(port, cmd, manager)
 
                 # then, copy all files to microcontroller
-                cmd = [
-                    "cd",
-                    tempdir.name,
-                    ";",
-                    "mpremote",
-                    "connect",
-                    port,
-                    "+",
-                    "cp",
-                    "-r",
-                    "./*",
-                    ":",
-                ]
-                proc = subprocess.Popen(
-                    " ".join(cmd),
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    shell=True
-                )
-                manager.set_mc(proc, port)
-                logger.debug(f"running command: {' '.join(cmd)}")
-                ec = proc.wait()
-                stderr = proc.stderr.read().decode()
-                stdout = proc.stdout.read().decode()
-                if proc.stderr: proc.stderr.close()
-                if proc.stdout: proc.stdout.close()
-                logger.debug(f"finished copying with exit code: {ec}")
-                if ec != 0:
-                    logger.debug(f"Got error from MC: {stderr}")
-                    logger.debug(f"stdout: {stdout}")
-                    raise Exception("Error: ", stderr)
+                logger.debug("copying to mc root...")
+                cmd = f'cd {tempdir.name} ; mpremote connect {port} + cp -r ./* :'
+                self.run_mpr_cmd(port, cmd, manager)
+
             except Exception as e:
+                logger.error(f"Error copying to microcontroller: {e}")
                 output = "\n".join(e.args)
                 asyncio.run(
                     self.signaler.signal_prejob_output(self.jobset_id, output)
                 )
                 return
-
-        # close tempdir
-        tempdir.cleanup()
 
         asyncio.run(
             self.signaler.signal_script_upload_complete_microcontroller(self.jobset_id)

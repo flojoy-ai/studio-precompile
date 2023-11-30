@@ -11,7 +11,7 @@ import json
 import threading
 from captain.types.worker import WorkerJobResponse
 
-
+lock = threading.Lock()
 
 socket_connection_lock = threading.Lock()
 
@@ -38,38 +38,40 @@ class Manager(object):
         """
         This function will store the process object and the port of the currently running microcontroller for cancellation purposes
         """
-        self.mc_info = (mc_proc, mc_port, play)
+        with lock:
+            self.mc_info = (mc_proc, mc_port, play)
 
     def terminate_mc_proc(self):
         """
         This function terminates the microcontroller process (play or upload) and soft reboots the microcontroller.
         """
-        try:
-            mc_proc, mc_port, play = self.mc_info
-        except ValueError:
-            logger.warning("nothing to terminate")
-            return  # mc_info not set
-                
-        if mc_proc:
-            # terminate the microcontroller process
-            logger.debug("terminating mc...")
-            mc_proc.terminate()
-            mc_proc.wait(5) # wait for process to terminate 
-            if mc_proc.returncode != 0:
-                logger.error("mc terminated with non-zero exit code or timeout")
-            else:
-                logger.debug("terminated mc")
-
-            if play: # this means "play" was pressed
-                # soft reboot the microcontroller
-                logger.debug("resetting mc...")
-                stderr = subprocess.run(["mpremote", "connect", mc_port, "+", "reset"], stderr=subprocess.PIPE).stderr.decode()
-                if (stderr != ""):
-                    logger.error(f"reset failed: {stderr}")
+        with lock:
+            try:
+                mc_proc, mc_port, play = self.mc_info
+            except ValueError:
+                logger.warning("nothing to terminate")
+                return  # mc_info not set
+                    
+            if mc_proc:
+                # terminate the microcontroller process
+                logger.debug("terminating mc...")
+                mc_proc.terminate()
+                mc_proc.wait(5) # wait for process to terminate 
+                if mc_proc.returncode != 0:
+                    logger.error("mc terminated with non-zero exit code or timeout")
                 else:
-                    logger.debug("reset mc")
+                    logger.debug("terminated mc")
 
-            self.mc_info = () # reset mc_info
+                if play: # this means "play" was pressed
+                    # soft reboot the microcontroller
+                    logger.debug("soft-resetting mc...")
+                    stderr = subprocess.run(["mpremote", "connect", mc_port, "+", "soft-reset"], stderr=subprocess.PIPE).stderr.decode()
+                    if (stderr != ""):
+                        logger.error(f"soft-reset failed: {stderr}")
+                    else:
+                        logger.debug("soft-reset mc")
+
+                self.mc_info = () # reset mc_info
             
 
         

@@ -12,14 +12,14 @@ from flojoy.utils import clear_flojoy_memory
 from captain.utils.config import manager    
 
 # TODO Support node init precompilation
-async def precompile(
+def precompile(
     fc: str,
     jobset_id: str,
     node_delay: float,
     maximum_runtime: float,
     path_to_requirements: str,
     signaler: Signaler,
-    path_to_output: str = "test",
+    path_to_output: str = "",
     is_ci: bool = False,
     upload: bool = False,
     port: str = "",
@@ -40,7 +40,7 @@ async def precompile(
         tmpdirname, jobset_id=jobset_id, is_ci=is_ci, signaler=signaler
     )
     
-    await asyncio.create_task(
+    asyncio.run(
         signaler.signal_script_building_microcontroller(jobset_id)
     )  # signal build start to front-end
 
@@ -79,19 +79,13 @@ async def precompile(
     # even necessary to run on microcontroller
 
     # Step 8: output to microcontroller or just run it
-
-    # use threading module to run 'run script' in a separate thread
-    # so that we can return to the front-end immediately
-    # and not have to wait for the script to finish running
     if upload:
-        threading.Thread(
-            target=sw.output,
-            args=(tempdir, port, path_to_output, manager),
-        ).start()
+        sw.output(tempdir, port, path_to_output, manager)
     else:
-        threading.Thread(
-            target=sw.run_script,
-            args=(tempdir, port, manager),
-        ).start()
+        sw.run_script(tempdir, port, manager)
+
+    # clean up tempdir
+    tempdir.cleanup()
+
 
 
