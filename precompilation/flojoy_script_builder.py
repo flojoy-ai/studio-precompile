@@ -335,7 +335,7 @@ class FlojoyScriptBuilder:
 
                     path = copy(cur_module_path)
                     # handle absolute import
-                    if module_name.startswith("nodes."):
+                    if module_name.startswith("nodes_mc."):
                         path = (
                             "PYTHON"
                             + os.path.sep

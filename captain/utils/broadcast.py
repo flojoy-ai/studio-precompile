@@ -11,7 +11,7 @@ class Signaler:
     Class used to signal the status of the topology to the front-end client
     """
 
-    def __init__(self, ws: ConnectionManager):
+    def __init__(self, ws: ConnectionManager = ConnectionManager()):
         self.ws = ws
 
     async def signal_node_results(

@@ -18,15 +18,17 @@ def precompile(
     node_delay: float,
     maximum_runtime: float,
     path_to_requirements: str,
-    signaler: Signaler,
+    signaler: Signaler = Signaler(),
     path_to_output: str = "",
     is_ci: bool = False,
     upload: bool = False,
     port: str = "",
 ):
     """
-    Precompiles a flowchart into a script that can be run on a remote machine or a microcontroller (not yet done for microcontroller).
+    Precompiles a flowchart into a script that can be run on a microcontroller.
     """
+
+    # TODO support cancel for script building phase
 
     if port == "":
         raise Exception("No port provided")
