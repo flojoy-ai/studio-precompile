@@ -1,5 +1,12 @@
 import subprocess
 import tempfile
+from precompilation.config import COMMAND_TESTS
+
+
+def test_mc(port, err_type=Exception, tests=COMMAND_TESTS):
+    for test, expected_output, err_msg in tests:
+        p = run_test(test, port)
+        verify_test(p, test, expected_output, err_msg, err_type)
 
 
 def run_test(test, port):

@@ -5,8 +5,11 @@ from fastapi import APIRouter
 from captain.services.file_uploader.file_uploader import FileUploader
 from captain.types.mc import HasRequirements, MCTestError, NoPortError, UploadFirmware
 from captain.utils.logger import logger
-from captain.utils.microcontroller_ping import run_test, verify_test
-from precompilation.config import COMMAND_TESTS, PATH_TO_MC_STATUS_CODES_YML, RP2_FIRMWARE_PATH
+from captain.utils.microcontroller_ping import test_mc
+from precompilation.config import (
+    PATH_TO_MC_STATUS_CODES_YML,
+    RP2_FIRMWARE_PATH,
+)
 import yaml
 
 router = APIRouter(tags=["mc_status"])
@@ -18,12 +21,11 @@ class MCRequirements:
         self.status = status
         self.msg = msg
 
+
 @router.post("/mc_firmware_upload")
 async def mc_firmware_upload(req: UploadFirmware):
     fu = FileUploader()
-    fu.set_target(RP2_FIRMWARE_PATH)\
-    .set_destination(req.destination)\
-    .upload()
+    fu.set_target(RP2_FIRMWARE_PATH).set_destination(req.destination).upload()
 
 
 @router.get("/mc_status_codes")
@@ -45,22 +47,19 @@ async def mc_status_codes():
 async def mc_has_requirements(req: HasRequirements):
     status = "FAIL"  # default status
     port = req.port
-    
-    try:
 
+    try:
         if not port:
             raise NoPortError()
 
-        for test, expected_output, err_msg in COMMAND_TESTS:
-            p = run_test(test, port)
-            verify_test(p, test, expected_output, err_msg, MCTestError)
-        status = "PASS"
+        test_mc(port, err_type=MCTestError)
+        status = "PASS"  # mark the status as pass if all tests pass
 
     except subprocess.TimeoutExpired as e:
         logger.error("Timeout error")
         status = "FAIL"
         return MCRequirements(2, status, "Timeout error")
-    
+
     except NoPortError as e:
         logger.error(e.message)
         status = "FAIL"
